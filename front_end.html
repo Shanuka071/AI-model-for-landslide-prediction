@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Sri Lanka Climate Risk Live Dashboard</title>
+    <style>
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: #0f172a; margin: 0; padding: 20px; color: #f8fafc; }
+        .dashboard-container { max-width: 1000px; margin: 30px auto; background: #1e293b; padding: 30px; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.3); }
+        h2 { color: #38bdf8; margin-top: 0; border-bottom: 2px solid #334155; padding-bottom: 12px; font-size: 24px; }
+        .grid { display: grid; grid-template-columns: 1.2fr 1.8fr; gap: 25px; margin-top: 20px; }
+        .card { padding: 25px; border-radius: 12px; background: #0f172a; border: 1px solid #334155; }
+        label { font-weight: 600; display: block; margin-bottom: 8px; color: #94a3b8; font-size: 14px; }
+        select, input { width: 100%; padding: 12px; margin-bottom: 20px; border: 1px solid #334155; border-radius: 6px; box-sizing: border-box; background: #1e293b; color: white; font-size: 15px; }
+        button { width: 100%; background: #0284c7; color: white; padding: 14px; border: none; border-radius: 6px; font-size: 16px; cursor: pointer; font-weight: bold; }
+        button:hover { background: #0369a1; }
+        
+        /* HAZARD DISPLAY STATUS CARDS */
+        .alert-panel { display: flex; flex-direction: column; padding: 25px; border-radius: 12px; border: 1px solid #334155; background: #0f172a; }
+        .hazard-row { display: flex; justify-content: space-between; align-items: center; padding: 15px; margin-bottom: 12px; border-radius: 8px; font-weight: bold; font-size: 16px; }
+        
+        /* RISK MATRIX COLOUR CLASSES */
+        .safe-bg { background: rgba(34, 197, 94, 0.15); border: 1px solid #22c55e; color: #4ade80; }
+        .advisory-bg { background: rgba(234, 179, 8, 0.15); border: 1px solid #eab308; color: #fde047; }
+        .danger-bg { background: rgba(239, 68, 68, 0.25); border: 1px solid #ef4444; color: #fca5a5; animation: pulse 2s infinite; }
+
+        .metrics-display { font-family: monospace; font-size: 13px; background: rgba(0,0,0,0.4); padding: 12px; border-radius: 6px; color: #cbd5e1; margin-top: 15px; text-align: center; }
+        @keyframes pulse { 0% { opacity: 0.9; } 50% { opacity: 1; } 100% { opacity: 0.9; } }
+    </style>
+</head>
+<body>
+
+<div class="dashboard-container">
+    <h2>🇱🇰 Department of Meteorology Data Processing Dashboard</h2>
+    <p style="color: #64748b; margin-top: -10px;">Automated Reinforcement Learning Multi-Hazard Mapping</p>
+    
+    <div class="grid">
+        <div class="card">
+            <label>Target Observation Site:</label>
+            <select id="location">
+                <option value="Hambantota District">Hambantota Coastal Area</option>
+                <option value="Nuwara Eliya Hills">Nuwara Eliya Mountain Base</option>
+                <option value="Badulla Slopes">Badulla High-Risk Slopes</option>
+                <option value="Colombo Municipality">Colombo Urban Drainage Basin</option>
+            </select>
+            
+            <label>Daily Rainfall Today (mm):</label>
+            <input type="number" id="rainToday" value="220">
+            
+            <label>7-Day Cumulative Rainfall History (mm):</label>
+            <input type="number" id="rainWeek" value="450">
+            
+            <button onclick="getAIWarning()">Execute Risk Computations</button>
+        </div>
+        
+        <div class="alert-panel">
+            <span style="font-size: 11px; font-weight: bold; letter-spacing: 1px; color: #38bdf8; margin-bottom: 5px;">LIVE AI MONITOR OUTPUT</span>
+            <h3 id="displayLocation" style="margin: 0 0 20px 0; font-size: 20px; color: white;">📍 Area: Waiting for Input</h3>
+            
+            <div id="floodCard" class="hazard-row safe-bg">
+                <span>FLOOD STATUS:</span>
+                <span id="floodStatusText">INITIALIZING</span>
+            </div>
+            
+            <div id="landslideCard" class="hazard-row safe-bg">
+                <span>LANDSLIDE STATUS:</span>
+                <span id="landslideStatusText">INITIALIZING</span>
+            </div>
+            
+            <div class="metrics-display" id="rainfallStats">
+                Enter meteorological variables to generate live risk matrices.
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+async function getAIWarning() {
+    const location = document.getElementById('location').value;
+    
+    // FIXED TO CORRECTLY CAPTURE BOTH USER INPUT BOX VALUES
+    const rainToday = parseFloat(document.getElementById('rainToday').value);
+    const rainWeek = parseFloat(document.getElementById('rainWeek').value);
+    
+    const floodCard = document.getElementById('floodCard');
+    const floodText = document.getElementById('floodStatusText');
+    const landslideCard = document.getElementById('landslideCard');
+    const landslideText = document.getElementById('landslideStatusText');
+
+    try {
+        const response = await fetch('http://127.0.0.1:5000/predict', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                location: location,
+                rainfall_today: rainToday,
+                cumulative_7day: rainWeek
+            })
+        });
+        
+        const result = await response.json();
+        
+        // Update location and print log metrics
+        document.getElementById('displayLocation').innerText = "📍 Area: " + result.location;
+        document.getElementById('rainfallStats').innerText = "📡 Inputs Processed Successfully! Today: " + result.rainfall_mm + "mm | 7-Day: " + result.cumulative_mm + "mm";
+        
+        // 1. CALCULATE FLOOD RISK ALERTS DYNAMICALLY
+        if (result.rainfall_mm > 120) {
+            floodCard.className = "hazard-row danger-bg";
+            floodText.innerText = "HIGH RISK / CRITICAL THREAT";
+        } else if (result.rainfall_mm > 50) {
+            floodCard.className = "hazard-row advisory-bg";
+            floodText.innerText = "MODERATE RISK ADVISORY";
+        } else {
+            floodCard.className = "hazard-row safe-bg";
+            floodText.innerText = "CLEAR / SAFE";
+        }
+        
+        // 2. CALCULATE LANDSLIDE RISK ALERTS DYNAMICALLY
+        if (result.cumulative_mm > 350 || (result.rainfall_mm > 100 && result.cumulative_mm > 250)) {
+            landslideCard.className = "hazard-row danger-bg";
+            landslideText.innerText = "CRITICAL LEVEL / EVACUATION REQUIRED";
+        } else if (result.cumulative_mm > 150) {
+            landslideCard.className = "hazard-row advisory-bg";
+            landslideText.innerText = " SERIOUS WARNING / MONITORING ACTIVE";
+        } else {
+            landslideCard.className = "hazard-row safe-bg";
+            landslideText.innerText = "CLEAR / STABLE SLOPES";
+        }
+
+    } catch (error) {
+        alert("Communications Error: Ensure your Python Flask Jupyter cell is actively running!");
+    }
+}
+</script>
+
+</body>
+</html>
