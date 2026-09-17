@@ -1,194 +1,279 @@
+"""
+Shared visual theme for DisasterGuard.
+
+BACKGROUND PHOTO — how it resolves (first match wins):
+  1. assets/hero_bg.jpg  -> your own photo, embedded as base64 (works offline)
+  2. HERO_URL below      -> a real Sri Lanka photo loaded from the web
+  3. a plain gradient    -> last-resort fallback
+
+To use your own photo, just save it as assets/hero_bg.jpg. Nothing else to change.
+
+IMPORTANT: render raw HTML through html() below, never a bare triple-quoted
+st.markdown with indented lines — Markdown turns any line indented 4+ spaces
+into a literal code block, which makes raw HTML/SVG show up as source text.
+"""
+import base64
+import functools
+import os
+import textwrap
+
 import streamlit as st
 
-THEME_CSS = """
+_ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
+
+# Tea plantation on a green mountain slope, Nuwara Eliya, Sri Lanka.
+# Photo by Egle Sidaraviciute on Unsplash (free under the Unsplash License).
+HERO_URL = (
+    "hero_bg.jpg"
+    "?fm=jpg&q=75&w=2400&auto=format&fit=crop"
+)
+
+
+def html(markup: str):
+    """Render raw HTML, stripping indentation so Markdown can't turn it into
+    a code block."""
+    st.markdown(textwrap.dedent(markup).strip(), unsafe_allow_html=True)
+
+
+@functools.lru_cache(maxsize=4)
+def _b64_asset(filename: str) -> str:
+    try:
+        with open(os.path.join(_ASSETS, filename), "rb") as f:
+            return base64.b64encode(f.read()).decode()
+    except (FileNotFoundError, OSError):
+        return ""
+
+
+def hero_image_css() -> str:
+    """CSS value for the hero photo layer."""
+    local = _b64_asset("hero_bg.jpg")
+    if local:
+        return f"url('data:image/jpeg;base64,{local}')"
+    if HERO_URL:
+        return f"url('{HERO_URL}')"
+    return "linear-gradient(140deg, #0d2a24 0%, #14463a 50%, #0a1a18 100%)"
+
+
+def _css() -> str:
+    photo = hero_image_css()
+    return f"""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600&display=swap');
 
-:root {
-    --bg: #0A1210;
-    --bg-deep: #060B0A;
-    --panel: #0F1C18;
-    --panel-alt: #13241F;
-    --border: #1E322C;
+:root {{
+    --bg: #070D11;
+    --panel: #0F1A1F;
+    --panel-2: #132228;
+    --border: #1E3038;
+    --accent: #10D9A0;
+    --accent-2: #16B37E;
+    --accent-soft: rgba(16,217,160,0.12);
+    --danger: #FF5A6E;
+    --warning: #FFB020;
+    --info: #3B9EFF;
+    --text: #EAF2F2;
+    --muted: #8FA5AE;
+}}
 
-    --accent: #10B981;
-    --accent-soft: rgba(16,185,129,0.14);
-    --accent2: #34D399;
+html, body, [class*="css"] {{ font-family: 'Inter', sans-serif; }}
+h1,h2,h3,h4,.brand,.hero-h,.page-h {{ font-family: 'Plus Jakarta Sans', sans-serif; }}
 
-    --danger: #EF4444;
-    --danger-soft: rgba(239,68,68,0.14);
-    --warning: #F5A524;
-    --warning-soft: rgba(245,165,36,0.14);
+.stApp {{ background: var(--bg); color: var(--text); }}
+.stApp, section.main {{ overflow-x: hidden; }}
+#MainMenu, footer, header {{ visibility: hidden; }}
+section.main > div.block-container {{ padding-top: 1rem; max-width: 1280px; }}
 
-    --text: #EAF2EF;
-    --muted: #8FA39C;
-}
-
-html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
-h1, h2, h3, h4, .hero-title, .brand-row, .section-title { font-family: 'Sora', sans-serif; }
-
-.stApp {
-    background: var(--bg);
-    color: var(--text);
-}
-#MainMenu, footer, header { visibility: hidden; }
-
-/* ---------- Nav bar ---------- */
-.brand-row {
-    display: flex; align-items: center; gap: 10px;
-    font-size: 19px; font-weight: 700; color: #fff; padding: 6px 0;
-}
-.brand-shield {
-    width: 30px; height: 30px; border-radius: 8px;
-    background: var(--accent-soft); display: flex; align-items: center; justify-content: center;
-    font-size: 16px;
-}
-div[data-testid="stPageLink"] a {
-    border-radius: 8px !important;
-    padding: 8px 14px !important;
-    font-weight: 600 !important;
-    font-size: 13.5px !important;
-    color: var(--muted) !important;
-    transition: color 0.15s ease, background 0.15s ease;
-    justify-content: center !important;
-}
-div[data-testid="stPageLink"] a:hover {
-    background: var(--accent-soft) !important;
-    color: var(--accent) !important;
-}
-.status-online {
-    display: flex; align-items: center; gap: 6px; justify-content: flex-end;
-    font-size: 12px; color: var(--muted); padding: 8px 4px;
-}
-.status-online .dot {
-    width: 7px; height: 7px; border-radius: 50%; background: var(--accent);
-    box-shadow: 0 0 8px var(--accent); animation: pulse 2s infinite;
-}
-@keyframes pulse {
-    0% { box-shadow: 0 0 0 0 rgba(16,185,129,0.55); }
-    70% { box-shadow: 0 0 0 9px rgba(16,185,129,0); }
-    100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); }
-}
-
-/* ---------- Hero photo background ----------
-   Swap the url() for your own licensed forest / valley photo.
-   Selectors are chained + !important because Streamlit's own
-   stylesheet also sets a background-color on this wrapper. */
-div[data-testid="stVerticalBlockBorderWrapper"].st-key-hero_container,
-div[data-testid="stVerticalBlockBorderWrapper"].st-key-hero_container > div,
-div[data-testid="stVerticalBlockBorderWrapper"].st-key-hero_container div[data-testid="stVerticalBlock"] {
-    background-color: transparent !important;
-    background-image:
-        linear-gradient(100deg, rgba(6,11,10,0.94) 24%, rgba(6,11,10,0.55) 60%, rgba(6,11,10,0.25) 100%),
-        url('https://picsum.photos/seed/disasterguard-forest/1600/900') !important;
-    background-size: cover !important;
-    background-position: center !important;
-    background-repeat: no-repeat !important;
-    border-radius: 16px !important;
-    border: 1px solid var(--border) !important;
-    padding: 12px !important;
-}
-
-/* ---------- Hero ---------- */
-.hero-title {
-    font-size: 44px; font-weight: 700; line-height: 1.12; margin: 10px 0 14px 0;
-    color: #FFFFFF; letter-spacing: -0.5px;
-}
-.hero-title .accent-line { color: var(--accent); display: block; }
-.hero-sub { color: #C7D3CE; font-size: 15.5px; max-width: 440px; line-height: 1.6; }
-
-/* ---------- Radar illustration (Sri Lanka silhouette + sweep) ---------- */
-.radar-wrap { width: 100%; max-width: 240px; margin: 10px auto; }
-.radar-wrap svg { width: 100%; height: auto; display: block; }
-.radar-dot-svg { animation: blink2 2.2s infinite; }
-@keyframes blink2 { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
-
-/* ---------- Feature / stat cards ---------- */
-.feature-card {
-    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
-    padding: 20px 18px; transition: border-color .2s ease;
-}
-.feature-card:hover { border-color: var(--accent); }
-.feature-icon {
-    width: 40px; height: 40px; border-radius: 10px; display: flex;
-    align-items: center; justify-content: center; font-size: 19px;
-    background: var(--accent-soft); margin-bottom: 12px; color: var(--accent);
-}
-.feature-card h3 { color: #fff; font-size: 15px; margin: 0 0 6px 0; font-weight: 600; }
-.feature-card p { color: var(--muted); font-size: 12.5px; line-height: 1.5; margin: 0; }
-
-.stat-box {
-    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
-    padding: 18px; text-align: center;
-}
-.stat-box h2 { color: var(--accent); font-size: 24px; margin: 0; font-weight: 700; }
-.stat-box p { color: var(--muted); font-size: 12px; margin-top: 6px; }
-
-/* ---------- Metric / status ---------- */
-.metric-card {
-    background: var(--panel); padding: 16px 18px; border-radius: 12px;
-    border: 1px solid var(--border);
-}
-.metric-card .m-label { color: var(--muted); font-size: 12px; margin-bottom: 6px; }
-.metric-card h3 { color: var(--text); font-size: 21px; margin: 0; font-weight: 700; }
-.metric-card .m-sub { font-size: 11.5px; margin-top: 4px; }
-.m-sub.up { color: var(--danger); }
-.m-sub.ok { color: var(--accent); }
-
-.risk-pill {
-    display: inline-block; padding: 4px 14px; border-radius: 999px;
-    font-weight: 700; font-size: 13px;
-}
-.risk-pill.high { background: var(--danger); color: #fff; }
-.risk-pill.moderate { background: var(--warning); color: #3D2A05; }
-.risk-pill.low { background: var(--accent); color: #06281C; }
-
-.status-pill { padding: 15px 18px; border-radius: 10px; font-weight: 600; border-left: 3px solid transparent; }
-.status-safe { background: var(--accent-soft); color: var(--accent); border-left-color: var(--accent); }
-.status-risk { background: var(--danger-soft); color: var(--danger); border-left-color: var(--danger); }
-
-.danger-banner { padding: 16px 18px; border-radius: 10px; font-weight: 700; font-size: 15px; margin-top: 14px; }
-.danger-low      { background: var(--accent-soft); color: var(--accent); }
-.danger-moderate { background: var(--warning-soft); color: var(--warning); }
-.danger-high     { background: var(--danger-soft);  color: var(--danger); }
-.danger-banner .db-sub { font-weight: 400; font-size: 12.5px; color: var(--muted); margin-top: 6px; }
-
-/* ---------- Panels / lists ---------- */
-.panel-card {
-    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
-    padding: 18px 20px;
-}
-.panel-card h4 { margin: 0 0 14px 0; font-size: 14.5px; color: #fff; font-weight: 600; }
-.legend-row { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); margin: 6px 0; }
-.legend-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
-
-.check-list { list-style: none; padding: 0; margin: 0; }
-.check-list li { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--text); padding: 5px 0; }
-.check-list li:before { content: "✓"; color: var(--accent); font-weight: 700; }
-
-.pipeline-row { display: flex; align-items: flex-start; gap: 6px; }
-.pipeline-node { flex: 1; text-align: center; }
-.pipeline-icon {
-    width: 46px; height: 46px; border-radius: 50%; background: var(--accent-soft);
-    display: flex; align-items: center; justify-content: center; font-size: 19px;
-    color: var(--accent); margin: 0 auto 10px auto;
-}
-.pipeline-node h5 { color: #fff; font-size: 13px; margin: 0 0 4px 0; font-weight: 600; }
-.pipeline-node p { color: var(--muted); font-size: 11.5px; margin: 0; line-height: 1.4; }
-.pipeline-arrow { color: var(--border); font-size: 20px; padding-top: 12px; }
-
-.glass {
-    background: rgba(15,28,24,0.6);
+/* ============ NAV ============ */
+.st-key-navshell {{
+    background: rgba(9,20,24,0.92);
     backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
-    border: 1px solid var(--border); border-radius: 14px;
-}
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 4px 16px;
+    margin-bottom: 16px;
+}}
+.brand {{
+    display: flex; align-items: center; gap: 10px;
+    font-size: 19px; font-weight: 800; color: #fff; white-space: nowrap; padding: 4px;
+}}
+.brand .g {{ color: var(--accent); }}
+.brand-badge {{
+    width: 32px; height: 32px; border-radius: 9px; flex: none;
+    background: var(--accent-soft); border: 1px solid rgba(16,217,160,0.45);
+    display: flex; align-items: center; justify-content: center; font-size: 16px;
+}}
+.sys-online {{
+    display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+    color: var(--muted); font-size: 12.5px; font-weight: 600; white-space: nowrap; padding: 8px 2px;
+}}
+.sys-online .dot {{
+    width: 8px; height: 8px; border-radius: 50%; flex: none;
+    background: var(--accent); box-shadow: 0 0 9px var(--accent);
+    animation: pulse 1.9s infinite;
+}}
+@keyframes pulse {{
+    0% {{ box-shadow: 0 0 0 0 rgba(16,217,160,.6); }}
+    70% {{ box-shadow: 0 0 0 10px rgba(16,217,160,0); }}
+    100% {{ box-shadow: 0 0 0 0 rgba(16,217,160,0); }}
+}}
+div[data-testid="stPageLink"] a {{
+    border-radius: 8px !important; padding: 10px 6px !important;
+    font-weight: 600 !important; font-size: 14px !important;
+    color: var(--muted) !important; justify-content: center !important;
+    transition: all .18s ease;
+}}
+div[data-testid="stPageLink"] a:hover {{ color: #fff !important; background: rgba(255,255,255,.06) !important; }}
+/* active tab: green text + underline, like the mockup */
+.st-key-navactive div[data-testid="stPageLink"] a {{
+    color: var(--accent) !important;
+    border-bottom: 2px solid var(--accent) !important;
+    border-radius: 8px 8px 0 0 !important;
+}}
 
-.section-title { font-weight: 700; font-size: 23px; margin-bottom: 4px; color: #fff; }
-.section-title .accent-word { color: var(--accent); }
-.section-sub { color: var(--muted); margin-bottom: 20px; font-size: 14px; }
-hr { border-color: var(--border) !important; }
+/* ============ HERO (photo) ============ */
+.hero {{
+    position: relative;
+    border-radius: 18px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    background:
+        linear-gradient(100deg, rgba(7,13,17,0.94) 0%, rgba(7,13,17,0.80) 42%, rgba(7,13,17,0.45) 70%, rgba(7,13,17,0.35) 100%),
+        {photo};
+    background-size: cover, cover;
+    background-position: center, center;
+    padding: 58px 46px;
+    margin-bottom: 18px;
+}}
+.hero-h {{
+    font-size: clamp(34px, 4.4vw, 58px); font-weight: 800; line-height: 1.06;
+    letter-spacing: -1.5px; color: #fff; margin: 0;
+}}
+.hero-h .accent {{ color: var(--accent); }}
+.hero-sub {{
+    color: #CBD9DD; font-size: 16px; line-height: 1.7; max-width: 460px; margin: 18px 0 0 0;
+}}
+
+.st-key-cta-primary div[data-testid="stPageLink"] a {{
+    background: var(--accent) !important; color: #05201A !important;
+    font-weight: 700 !important; padding: 13px 18px !important;
+    border-radius: 999px !important; box-shadow: 0 10px 26px rgba(16,217,160,.28);
+}}
+.st-key-cta-primary div[data-testid="stPageLink"] a:hover {{ transform: translateY(-2px); }}
+.st-key-cta-ghost div[data-testid="stPageLink"] a {{
+    background: rgba(255,255,255,.04) !important; border: 1px solid rgba(255,255,255,.35) !important;
+    color: #fff !important; font-weight: 600 !important; padding: 13px 18px !important;
+    border-radius: 999px !important;
+}}
+.st-key-cta-ghost div[data-testid="stPageLink"] a:hover {{ background: rgba(255,255,255,.12) !important; transform: translateY(-2px); }}
+
+/* radar */
+.radar-spin {{ transform-origin: 160px 160px; animation: spin 4.5s linear infinite; }}
+@keyframes spin {{ to {{ transform: rotate(360deg); }} }}
+.blip {{ animation: blink 2.6s infinite; }}
+@keyframes blink {{ 0%,100% {{ opacity:.35 }} 50% {{ opacity:1 }} }}
+
+/* ============ CARDS ============ */
+.card {{
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 14px; padding: 22px;
+}}
+.feature-card {{
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 14px; padding: 22px; min-height: 172px;
+    transition: transform .22s, border-color .22s;
+}}
+.feature-card:hover {{ transform: translateY(-6px); border-color: var(--accent); }}
+.feature-icon {{
+    width: 44px; height: 44px; border-radius: 50%;
+    background: var(--accent-soft); border: 1px solid rgba(16,217,160,.35);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 19px; margin-bottom: 14px;
+}}
+.feature-card h3 {{ color: #fff; font-size: 15.5px; margin: 0 0 7px 0; }}
+.feature-card p {{ color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0; }}
+
+.metric-card {{
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 14px; padding: 18px;
+}}
+.metric-card .lbl {{ color: var(--muted); font-size: 11.5px; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 8px; }}
+.metric-card .val {{ color: #fff; font-size: 27px; font-weight: 800; line-height: 1; }}
+.metric-card .sub {{ color: var(--muted); font-size: 12px; margin-top: 7px; }}
+
+.pill {{ display: inline-block; padding: 5px 12px; border-radius: 999px; font-size: 12px; font-weight: 700; }}
+.pill-high {{ background: rgba(255,90,110,.15); color: var(--danger); border: 1px solid rgba(255,90,110,.5); }}
+.pill-mod  {{ background: rgba(255,176,32,.15); color: var(--warning); border: 1px solid rgba(255,176,32,.5); }}
+.pill-low  {{ background: rgba(16,217,160,.15); color: var(--accent); border: 1px solid rgba(16,217,160,.5); }}
+
+.alert-box {{ border-radius: 14px; padding: 20px; border: 1px solid; }}
+.alert-high {{ background: rgba(255,90,110,.10); border-color: rgba(255,90,110,.55); }}
+.alert-mod  {{ background: rgba(255,176,32,.10); border-color: rgba(255,176,32,.55); }}
+.alert-low  {{ background: rgba(16,217,160,.10); border-color: rgba(16,217,160,.55); }}
+.alert-box .t {{ font-weight: 800; font-size: 18px; margin: 8px 0 6px 0; }}
+.alert-box .d {{ color: var(--muted); font-size: 13px; line-height: 1.55; }}
+.alert-high .t {{ color: var(--danger); }}
+.alert-mod .t {{ color: var(--warning); }}
+.alert-low .t {{ color: var(--accent); }}
+
+.legend-row {{ display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12.5px; margin-bottom: 8px; }}
+.legend-dot {{ width: 10px; height: 10px; border-radius: 50%; flex: none; }}
+
+.page-h {{ font-size: 28px; font-weight: 800; color: #fff; margin: 4px 0 2px 0; }}
+.page-sub {{ color: var(--muted); font-size: 14px; margin-bottom: 18px; }}
+.sec-h {{ font-size: 16px; font-weight: 700; color: #fff; margin-bottom: 12px; }}
+
+.tbl {{ width: 100%; border-collapse: collapse; font-size: 13px; }}
+.tbl th {{ color: var(--muted); font-weight: 600; text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 11.5px; text-transform: uppercase; letter-spacing: .4px; }}
+.tbl td {{ color: var(--text); padding: 11px 12px; border-bottom: 1px solid rgba(30,48,56,.6); }}
+.tbl tr:last-child td {{ border-bottom: none; }}
+
+.step {{ background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 18px 14px; text-align: center; min-height: 150px; }}
+.step .n {{ color: var(--accent); font-size: 12px; font-weight: 700; }}
+.step h4 {{ color: #fff; font-size: 14px; margin: 6px 0; }}
+.step p {{ color: var(--muted); font-size: 12px; margin: 0; line-height: 1.5; }}
+.step-arrow {{ text-align: center; color: var(--accent); font-size: 18px; padding-top: 62px; }}
+
+.ftr {{ border-top: 1px solid var(--border); margin-top: 26px; padding-top: 18px; color: var(--muted); font-size: 12.5px; }}
+
+section[data-testid="stSidebar"] {{ background: #0A1418; border-right: 1px solid var(--border); }}
+
+/* Streamlit widget polish */
+div[data-testid="stMetricValue"] {{ font-family: 'Plus Jakarta Sans', sans-serif; }}
+.stButton > button {{
+    background: var(--accent); color: #05201A; font-weight: 700;
+    border: none; border-radius: 10px; padding: 11px 18px; width: 100%;
+}}
+.stButton > button:hover {{ background: #14F0B0; color: #05201A; }}
+
+@media (max-width: 900px) {{
+    .hero {{ padding: 34px 22px; }}
+    .feature-card, .step {{ min-height: auto; }}
+}}
 </style>
 """
 
+
 def inject_theme():
-    st.markdown(THEME_CSS, unsafe_allow_html=True)
+    st.markdown(_css(), unsafe_allow_html=True)
+    st.markdown(hero_container_css(), unsafe_allow_html=True)
+
+
+# Hero container styling is appended here so it can reference hero_image_css()
+def hero_container_css() -> str:
+    return f"""
+<style>
+.st-key-hero {{
+    position: relative;
+    border-radius: 18px;
+    border: 1px solid var(--border);
+    background:
+        linear-gradient(100deg, rgba(7,13,17,0.95) 0%, rgba(7,13,17,0.82) 40%,
+                        rgba(7,13,17,0.48) 70%, rgba(7,13,17,0.38) 100%),
+        {hero_image_css()};
+    background-size: cover, cover;
+    background-position: center, center;
+    padding: 52px 42px;
+    margin-bottom: 18px;
+}}
+</style>
+"""

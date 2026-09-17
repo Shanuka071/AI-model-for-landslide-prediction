@@ -1,80 +1,163 @@
-import streamlit as st
-import pandas as pd
-import sys
+import datetime
 import os
+import sys
 
-_THIS_DIR = os.path.dirname(__file__)
-sys.path.append(os.path.join(_THIS_DIR, '..'))
-sys.path.append(os.path.join(_THIS_DIR, '..', 'src'))
+import pandas as pd
+import streamlit as st
+
+_THIS = os.path.dirname(__file__)
+sys.path.append(os.path.join(_THIS, '..'))
+sys.path.append(os.path.join(_THIS, '..', 'src'))
 
 from data_loader import load_and_process_data
-from theme import inject_theme
+from theme import inject_theme, html
 from nav_pages import render_navbar
 
 inject_theme()
-render_navbar()
+render_navbar(active="Audit Logs")
+
+st.session_state.setdefault("audit_log", [])
+
+html("<div class='page-h'>Audit Logs</div>")
+html("<div class='page-sub'>View and manage system logs, risk predictions and alerts.</div>")
+
+df_log = pd.DataFrame(st.session_state.audit_log)
+
+# =========================================================
+# FILTERS
+# =========================================================
+with st.container(border=True):
+    f1, f2, f3, f4 = st.columns([1, 1, 1.4, 0.8], vertical_alignment="bottom")
+
+    with f1:
+        district_opts = ["All Districts"] + (sorted(df_log["District"].unique().tolist()) if not df_log.empty else [])
+        sel_district = st.selectbox("District", district_opts)
+    with f2:
+        sel_level = st.selectbox("Danger Level", ["All Levels", "High Risk", "Moderate Watch", "Low Risk"])
+    with f3:
+        today = datetime.date.today()
+        date_range = st.date_input("Date Range", (today - datetime.timedelta(days=30), today))
+    with f4:
+        export_placeholder = st.empty()
+
+# ---------------- apply filters ----------------
+filtered = df_log.copy()
+if not filtered.empty:
+    filtered["_dt"] = pd.to_datetime(filtered["Timestamp"], errors="coerce")
+
+    if sel_district != "All Districts":
+        filtered = filtered[filtered["District"] == sel_district]
+    if sel_level != "All Levels":
+        filtered = filtered[filtered["Risk_Level"] == sel_level]
+    if isinstance(date_range, (tuple, list)) and len(date_range) == 2:
+        start, end = date_range
+        filtered = filtered[
+            (filtered["_dt"].dt.date >= start) & (filtered["_dt"].dt.date <= end)
+        ]
+    filtered = filtered.drop(columns=["_dt"], errors="ignore")
+
+with export_placeholder:
+    st.download_button(
+        "⬇️ Export CSV",
+        data=(filtered.to_csv(index=False).encode("utf-8") if not filtered.empty else b""),
+        file_name="disasterguard_audit_logs.csv",
+        mime="text/csv",
+        disabled=filtered.empty,
+        use_container_width=True,
+    )
 
 st.write("")
-st.markdown("<div class='section-title'>Audit <span class='accent-word'>Logs</span></div>", unsafe_allow_html=True)
-st.markdown("<div class='section-sub'>View and manage system logs, risk predictions, and alerts.</div>", unsafe_allow_html=True)
 
-if 'audit_log' in st.session_state and st.session_state.audit_log:
-    df_log = pd.DataFrame(st.session_state.audit_log)
+# =========================================================
+# STAT CARDS
+# =========================================================
+def count_level(name):
+    if filtered.empty:
+        return 0
+    return int((filtered["Risk_Level"] == name).sum())
 
-    f1, f2, f3, f4 = st.columns([1, 1, 1.4, 0.8])
-    with f1:
-        districts = df_log['District'].unique().tolist()
-        selected_district = st.selectbox("District", ["All districts"] + districts)
-    with f2:
-        danger_options = df_log['Overall_Danger'].unique().tolist() if 'Overall_Danger' in df_log else []
-        selected_danger = st.selectbox("Danger level", ["All levels"] + danger_options)
-    with f3:
-        st.date_input("Date range", value=())
-    with f4:
-        st.write("")
-        st.write("")
-        csv = df_log.to_csv(index=False).encode('utf-8')
-        st.download_button("Export CSV", data=csv, file_name="disasterguard_audit_log.csv", mime="text/csv", use_container_width=True)
 
-    df_filtered_log = df_log.copy()
-    if selected_district != "All districts": df_filtered_log = df_filtered_log[df_filtered_log['District'] == selected_district]
-    if selected_danger != "All levels" and 'Overall_Danger' in df_filtered_log: df_filtered_log = df_filtered_log[df_filtered_log['Overall_Danger'] == selected_danger]
+stats = [
+    ("📄", str(len(filtered)), "Total Records", "var(--info)"),
+    ("🔺", str(count_level("High Risk")), "High Risk", "var(--danger)"),
+    ("🔶", str(count_level("Moderate Watch")), "Moderate Risk", "var(--warning)"),
+    ("✅", str(count_level("Low Risk")), "Low Risk", "var(--accent)"),
+]
+for col, (icon, val, lbl, colour) in zip(st.columns(4), stats):
+    with col:
+        html(f"""
+        <div class='metric-card'>
+        <div style='font-size:18px;color:{colour};margin-bottom:6px;'>{icon}</div>
+        <div class='val'>{val}</div>
+        <div class='sub'>{lbl}</div>
+        </div>
+        """)
 
-    st.write("")
-    high_count = df_log['Overall_Danger'].str.contains("HIGH", na=False).sum()
-    mod_count = df_log['Overall_Danger'].str.contains("MODERATE", na=False).sum()
-    low_count = df_log['Overall_Danger'].str.contains("LOW", na=False).sum()
+st.write("")
 
-    s1, s2, s3, s4 = st.columns(4)
-    with s1: st.markdown(f"<div class='metric-card'><div class='m-label'>Total records</div><h3>{len(df_log)}</h3></div>", unsafe_allow_html=True)
-    with s2: st.markdown(f"<div class='metric-card'><div class='m-label'>High risk</div><h3 style='color:var(--danger)'>{high_count}</h3></div>", unsafe_allow_html=True)
-    with s3: st.markdown(f"<div class='metric-card'><div class='m-label'>Moderate risk</div><h3 style='color:var(--warning)'>{mod_count}</h3></div>", unsafe_allow_html=True)
-    with s4: st.markdown(f"<div class='metric-card'><div class='m-label'>Low risk</div><h3 style='color:var(--accent)'>{low_count}</h3></div>", unsafe_allow_html=True)
+# =========================================================
+# CHART + RECENT LOGS
+# =========================================================
+chart_col, logs_col = st.columns([1, 1.25], gap="medium")
 
-    st.write("")
-    c1, c2 = st.columns([1, 1.4])
-    with c1:
-        st.markdown("<div class='panel-card'><h4>Risk distribution</h4></div>", unsafe_allow_html=True)
-        st.bar_chart(df_log['Overall_Danger'].value_counts(), color="#10B981")
-    with c2:
-        st.markdown("<div class='panel-card'><h4>Recent logs</h4></div>", unsafe_allow_html=True)
-        st.dataframe(
-            df_filtered_log[['Timestamp', 'District', 'Overall_Danger']].rename(
-                columns={'Timestamp': 'Date & time', 'Overall_Danger': 'Risk level'}
-            ).sort_values('Date & time', ascending=False),
-            use_container_width=True, hide_index=True,
-        )
-else:
-    st.info("No assessments have been logged yet. Go to the risk dashboard and click 'Predict risk' to save your first entry.")
+with chart_col:
+    with st.container(border=True):
+        html("<div class='sec-h'>Risk Distribution</div>")
+        if filtered.empty:
+            st.caption("No data yet. Save assessments from the Risk Dashboard.")
+        else:
+            dist = (
+                filtered["Risk_Level"]
+                .value_counts()
+                .reindex(["High Risk", "Moderate Watch", "Low Risk"])
+                .fillna(0)
+                .astype(int)
+            )
+            st.bar_chart(dist, color="#10D9A0", height=260)
 
-with st.expander("Historical rainfall trends"):
+with logs_col:
+    with st.container(border=True):
+        html("<div class='sec-h'>Recent Logs</div>")
+        if filtered.empty:
+            st.caption("No log entries match these filters.")
+        else:
+            recent = filtered.tail(8)[::-1]
+            rows = ""
+            for _, r in recent.iterrows():
+                lvl = r["Risk_Level"]
+                pill = "pill-high" if lvl == "High Risk" else ("pill-mod" if "Moderate" in lvl else "pill-low")
+                rows += (
+                    f"<tr><td>{r['Timestamp']}</td><td>{str(r['District']).title()}</td>"
+                    f"<td>{r['Rainfall']:.0f} mm</td>"
+                    f"<td><span class='pill {pill}'>{lvl}</span></td></tr>"
+                )
+            html(
+                "<table class='tbl'><tr><th>Date &amp; Time</th><th>District</th>"
+                f"<th>Rainfall</th><th>Risk Level</th></tr>{rows}</table>"
+            )
+
+st.write("")
+
+# =========================================================
+# HISTORICAL RAINFALL
+# =========================================================
+with st.container(border=True):
+    html("<div class='sec-h'>📈 Historical Rainfall Trends (ASPU DATA.xlsx)</div>")
     with st.spinner("Loading historical data..."):
         df_hist = load_and_process_data('ASPU DATA.xlsx')
-    stations = df_hist['station_name'].unique().tolist()
-    selected_station = st.selectbox("Select station", stations)
-    df_filtered = df_hist[df_hist['station_name'] == selected_station].set_index('Date')
-    st.line_chart(df_filtered['Rainfall_mm'], color="#10B981")
-    c1, c2, c3 = st.columns(3)
-    with c1: st.markdown(f"<div class='metric-card'><div class='m-label'>Peak daily rainfall</div><h3>{df_filtered['Rainfall_mm'].max():.1f} mm</h3></div>", unsafe_allow_html=True)
-    with c2: st.markdown(f"<div class='metric-card'><div class='m-label'>Average daily rainfall</div><h3>{df_filtered['Rainfall_mm'].mean():.1f} mm</h3></div>", unsafe_allow_html=True)
-    with c3: st.markdown(f"<div class='metric-card'><div class='m-label'>Total records</div><h3>{len(df_filtered)}</h3></div>", unsafe_allow_html=True)
+
+    station = st.selectbox("Station", df_hist['station_name'].unique().tolist())
+    series = df_hist[df_hist['station_name'] == station].set_index('Date')['Rainfall_mm']
+    st.line_chart(series, color="#10D9A0", height=260)
+
+    h1, h2, h3 = st.columns(3)
+    for col, (v, l) in zip(
+        [h1, h2, h3],
+        [(f"{series.max():.1f} mm", "Peak Daily Rainfall"),
+         (f"{series.mean():.1f} mm", "Average Daily Rainfall"),
+         (f"{len(series)}", "Total Records")],
+    ):
+        with col:
+            html(f"<div class='metric-card'><div class='lbl'>{l}</div><div class='val'>{v}</div></div>")
+
+html("<div class='ftr'>© 2026 DisasterGuard · Predict Risk. Protect Lives.</div>")

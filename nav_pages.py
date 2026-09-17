@@ -1,3 +1,11 @@
+"""
+Single source of truth for pages + the top navigation bar.
+
+st.page_link() only accepts string paths for the entrypoint file and files
+inside pages/. home_view.py is neither, so nav links use the actual st.Page
+objects registered by get_nav_pages() — this is what makes "Home" work from
+every sub-page.
+"""
 import streamlit as st
 
 NAV_ITEMS = [
@@ -7,27 +15,44 @@ NAV_ITEMS = [
     ("pages/3_About.py", "About"),
 ]
 
+_PAGES: dict = {}
+
+
 def get_nav_pages():
-    """Build the st.Page objects used by st.navigation in app.py."""
     pages = []
     for i, (path, title) in enumerate(NAV_ITEMS):
-        pages.append(st.Page(path, title=title, default=(i == 0)))
+        page = st.Page(path, title=title, default=(i == 0))
+        _PAGES[title] = page
+        pages.append(page)
     return pages
 
-def render_navbar():
-    """Render the top navigation bar. Call at the top of every page."""
-    with st.container(border=True):
-        cols = st.columns([2, 1, 1, 1, 1, 1.3])
+
+def page_target(title: str):
+    if title in _PAGES:
+        return _PAGES[title]
+    for path, t in NAV_ITEMS:
+        if t == title:
+            return path
+    raise KeyError(title)
+
+
+def render_navbar(active: str = "Home"):
+    """Top navigation bar. `active` must match a NAV_ITEMS title."""
+    from theme import html
+
+    # Keyed container, not a raw <div>: a markdown div cannot wrap Streamlit
+    # columns (Streamlit closes it immediately, leaving an empty stripe).
+    with st.container(key="navshell"):
+        cols = st.columns([2.2, 0.85, 1.3, 1.1, 0.9, 1.5], vertical_alignment="center")
+
         with cols[0]:
-            st.markdown(
-                "<div class='brand-row'><span class='brand-shield'>🛡️</span>DisasterGuard</div>",
-                unsafe_allow_html=True,
-            )
-        for i, (path, title) in enumerate(NAV_ITEMS):
+            html("<div class='brand'><div class='brand-badge'>🛡️</div>Disaster<span class='g'>Guard</span></div>")
+
+        for i, (_path, title) in enumerate(NAV_ITEMS):
             with cols[i + 1]:
-                st.page_link(path, label=title)
+                key = "navactive" if title == active else f"navitem{i}"
+                with st.container(key=key):
+                    st.page_link(page_target(title), label=title)
+
         with cols[5]:
-            st.markdown(
-                "<div class='status-online'><span class='dot'></span>System online</div>",
-                unsafe_allow_html=True,
-            )
+            html("<div class='sys-online'><span class='dot'></span>System Online</div>")
