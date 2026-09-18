@@ -1,12 +1,29 @@
 """
 Shared visual theme for DisasterGuard.
 
-BACKGROUND PHOTO — how it resolves (first match wins):
-  1. assets/hero_bg.jpg  -> your own photo, embedded as base64 (works offline)
-  2. HERO_URL below      -> a real Sri Lanka photo loaded from the web
-  3. a plain gradient    -> last-resort fallback
+============================================================
+ TO CHANGE THE BACKGROUND PHOTO, EDIT ONE LINE: HERO_FILENAME
+============================================================
+Set it to the exact filename of a photo sitting in assets/ (or right next to
+app.py), e.g.:
 
-To use your own photo, just save it as assets/hero_bg.jpg. Nothing else to change.
+    HERO_FILENAME = "image3.jpg"
+
+That's it — save, rerun the app. No other line needs to change.
+
+Full resolution order (first match wins):
+  1. HERO_FILENAME (below) — if set, this exact file is used and nothing
+     else is checked. This always wins, even if a hero_bg.* file also exists.
+  2. hero_bg.jpg / .jpeg / .png — used automatically if HERO_FILENAME is
+     empty. Checked in assets/ first, then next to app.py.
+  3. HERO_URL — a real Sri Lanka photo loaded from the web, used only if
+     steps 1 and 2 found nothing.
+  4. A plain gradient — last-resort fallback.
+
+Common mistake this avoids: previously, setting HERO_URL had no visible
+effect whenever a leftover hero_bg.jpg was still sitting in the project —
+the local file silently took priority. HERO_FILENAME exists so there's one
+obvious, always-wins way to pick a specific photo.
 
 IMPORTANT: render raw HTML through html() below, never a bare triple-quoted
 st.markdown with indented lines — Markdown turns any line indented 4+ spaces
@@ -14,19 +31,40 @@ into a literal code block, which makes raw HTML/SVG show up as source text.
 """
 import base64
 import functools
+import mimetypes
 import os
 import textwrap
 
 import streamlit as st
 
-_ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
+_ROOT = os.path.dirname(os.path.abspath(__file__))
+_ASSETS = os.path.join(_ROOT, "assets")
+
+# <<< EDIT THIS to switch the background photo. Leave as "" to fall back to
+# the automatic hero_bg.jpg / .jpeg / .png search below.
+HERO_FILENAME = "image2.jpg"
+
+# Checked in order — first file that actually exists wins. Covers the two
+# places people naturally save a downloaded photo (assets/, or right next
+# to app.py) and the common extensions.
+_LOCAL_HERO_CANDIDATES = [
+    os.path.join(_ASSETS, "hero_bg.jpg"),
+    os.path.join(_ASSETS, "hero_bg.jpeg"),
+    os.path.join(_ASSETS, "hero_bg.png"),
+    os.path.join(_ROOT, "hero_bg.jpg"),
+    os.path.join(_ROOT, "hero_bg.jpeg"),
+    os.path.join(_ROOT, "hero_bg.png"),
+]
 
 # Tea plantation on a green mountain slope, Nuwara Eliya, Sri Lanka.
 # Photo by Egle Sidaraviciute on Unsplash (free under the Unsplash License).
-HERO_URL = (
-    "hero_bg.jpg"
-    "?fm=jpg&q=75&w=2400&auto=format&fit=crop"
-)
+# NOTE: keep this as ONE string. Splitting it across lines without the
+# implicit-concatenation being a single valid URL (e.g. separating the path
+# from its "?query=..." part) silently breaks the image — Python will still
+# join the pieces into one string, but it won't be a working link.
+# NOTE: this is a remote fallback only — see resolution order above. If a
+# local photo is found (via HERO_FILENAME or hero_bg.*), this is never used.
+HERO_URL = "https://images.unsplash.com/photo-1559038300-07cb5d6c3d27?fm=jpg&q=75&w=2400&auto=format&fit=crop"
 
 
 def html(markup: str):
@@ -35,27 +73,78 @@ def html(markup: str):
     st.markdown(textwrap.dedent(markup).strip(), unsafe_allow_html=True)
 
 
-@functools.lru_cache(maxsize=4)
-def _b64_asset(filename: str) -> str:
+def _load_image(path: str):
     try:
-        with open(os.path.join(_ASSETS, filename), "rb") as f:
-            return base64.b64encode(f.read()).decode()
-    except (FileNotFoundError, OSError):
-        return ""
+        with open(path, "rb") as f:
+            data = base64.b64encode(f.read()).decode()
+        mime = mimetypes.guess_type(path)[0] or "image/jpeg"
+        return data, mime
+    except OSError:
+        return None, None
+
+
+@functools.lru_cache(maxsize=8)
+def _load_image_cached(path: str, _mtime: float):
+    """_mtime is part of the cache key purely so that replacing the photo
+    file (which changes its mtime) invalidates the cache automatically —
+    without this, an lru_cache with no changing arguments would keep
+    serving the first photo it ever loaded for the lifetime of the running
+    Streamlit server, even after you swap the file."""
+    return _load_image(path)
+
+
+def _find_local_hero():
+    """Return (base64_data, mime_type, path) for the active local hero photo,
+    or (None, None, None) if none is found."""
+    # 1. Explicit override always wins, checked in assets/ then root.
+    if HERO_FILENAME:
+        for base in (_ASSETS, _ROOT):
+            path = os.path.join(base, HERO_FILENAME)
+            if os.path.isfile(path):
+                data, mime = _load_image_cached(path, os.path.getmtime(path))
+                if data:
+                    return data, mime, path
+        # HERO_FILENAME was set but the file wasn't found anywhere —
+        # fall through to the generic hero_bg.* search rather than silently
+        # showing nothing.
+
+    # 2. Generic hero_bg.* search.
+    for path in _LOCAL_HERO_CANDIDATES:
+        if os.path.isfile(path):
+            data, mime = _load_image_cached(path, os.path.getmtime(path))
+            if data:
+                return data, mime, path
+
+    return None, None, None
+
+
+def hero_photo_status() -> str:
+    """Human-readable status of which background source is active — handy
+    for debugging, e.g. python3 -c "import theme; print(theme.hero_photo_status())" """
+    data, _, path = _find_local_hero()
+    if data:
+        return f"Using local photo: {path}"
+    if HERO_FILENAME:
+        return (
+            f"HERO_FILENAME is set to '{HERO_FILENAME}' but that file was not "
+            f"found in {_ASSETS} or {_ROOT} — falling through to remote/gradient."
+        )
+    if HERO_URL:
+        return f"Using remote photo: {HERO_URL}"
+    return "No photo found — using gradient fallback."
 
 
 def hero_image_css() -> str:
     """CSS value for the hero photo layer."""
-    local = _b64_asset("hero_bg.jpg")
-    if local:
-        return f"url('data:image/jpeg;base64,{local}')"
+    data, mime, _path = _find_local_hero()
+    if data:
+        return f"url('data:{mime};base64,{data}')"
     if HERO_URL:
         return f"url('{HERO_URL}')"
     return "linear-gradient(140deg, #0d2a24 0%, #14463a 50%, #0a1a18 100%)"
 
 
 def _css() -> str:
-    photo = hero_image_css()
     return f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600&display=swap');
@@ -130,20 +219,8 @@ div[data-testid="stPageLink"] a:hover {{ color: #fff !important; background: rgb
     border-radius: 8px 8px 0 0 !important;
 }}
 
-/* ============ HERO (photo) ============ */
-.hero {{
-    position: relative;
-    border-radius: 18px;
-    overflow: hidden;
-    border: 1px solid var(--border);
-    background:
-        linear-gradient(100deg, rgba(7,13,17,0.94) 0%, rgba(7,13,17,0.80) 42%, rgba(7,13,17,0.45) 70%, rgba(7,13,17,0.35) 100%),
-        {photo};
-    background-size: cover, cover;
-    background-position: center, center;
-    padding: 58px 46px;
-    margin-bottom: 18px;
-}}
+/* ============ HERO (typography only — the photo lives on
+   .st-key-homepage in home_background_css(), not here) ============ */
 .hero-h {{
     font-size: clamp(34px, 4.4vw, 58px); font-weight: 800; line-height: 1.06;
     letter-spacing: -1.5px; color: #fff; margin: 0;
@@ -255,25 +332,66 @@ div[data-testid="stMetricValue"] {{ font-family: 'Plus Jakarta Sans', sans-serif
 
 def inject_theme():
     st.markdown(_css(), unsafe_allow_html=True)
-    st.markdown(hero_container_css(), unsafe_allow_html=True)
+    st.markdown(home_background_css(), unsafe_allow_html=True)
 
 
-# Hero container styling is appended here so it can reference hero_image_css()
-def hero_container_css() -> str:
+def home_background_css() -> str:
+    """
+    Full-page photo background for the Home page only.
+
+    Scoped entirely under .st-key-homepage, which home_view.py uses as the
+    single outer container wrapping the hero, feature cards, stats and
+    footer. Every other page is unaffected, since they never render a
+    'homepage' keyed container.
+
+    The panels inside (.feature-card, .metric-card) are turned translucent
+    here so the photo shows through them too ("penetrable", as requested),
+    with a text-shadow added to headings/labels so text stays legible
+    regardless of how bright the photo is at that spot.
+    """
     return f"""
 <style>
-.st-key-hero {{
+.st-key-homepage {{
     position: relative;
-    border-radius: 18px;
+    border-radius: 20px;
     border: 1px solid var(--border);
     background:
-        linear-gradient(100deg, rgba(7,13,17,0.95) 0%, rgba(7,13,17,0.82) 40%,
-                        rgba(7,13,17,0.48) 70%, rgba(7,13,17,0.38) 100%),
+        linear-gradient(180deg,
+            rgba(7,13,17,0.32) 0%,
+            rgba(7,13,17,0.50) 32%,
+            rgba(7,13,17,0.78) 68%,
+            rgba(7,13,17,0.94) 100%),
         {hero_image_css()};
     background-size: cover, cover;
-    background-position: center, center;
-    padding: 52px 42px;
+    background-position: center top, center top;
+    background-repeat: no-repeat, no-repeat;
+    padding: 52px 42px 34px 42px;
     margin-bottom: 18px;
+}}
+
+/* Text over the photo needs a shadow so it stays readable at any point */
+.st-key-homepage .hero-h,
+.st-key-homepage .hero-sub {{
+    text-shadow: 0 2px 18px rgba(0,0,0,.55);
+}}
+
+/* Cards inside the home page become frosted glass, so the photo shows
+   through them consistently rather than sitting on a solid dark box. */
+.st-key-homepage .feature-card,
+.st-key-homepage .metric-card {{
+    background: rgba(15,26,31,0.42) !important;
+    backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+    border: 1px solid rgba(255,255,255,0.12) !important;
+}}
+.st-key-homepage .feature-card h3,
+.st-key-homepage .feature-card p,
+.st-key-homepage .metric-card .val,
+.st-key-homepage .metric-card .lbl {{
+    text-shadow: 0 1px 10px rgba(0,0,0,.5);
+}}
+.st-key-homepage .ftr {{
+    border-top-color: rgba(255,255,255,0.18);
+    text-shadow: 0 1px 8px rgba(0,0,0,.5);
 }}
 </style>
 """

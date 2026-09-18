@@ -7,11 +7,14 @@ inject_theme()
 render_navbar(active="Home")
 
 # =========================================================
-# HERO — photo background
-# A keyed container (not a markdown <div>) so the photo actually wraps
-# the columns; a bare <div> would be closed by Streamlit immediately.
+# ONE background photo spans the whole home page from here down.
+# Everything — hero, feature cards, stats, footer — lives inside this
+# single keyed container so the photo shows through all of it, with the
+# cards turned into frosted glass (see .st-key-homepage in theme.py).
 # =========================================================
-with st.container(key="hero"):
+with st.container(key="homepage"):
+
+    # ---------------- HERO ----------------
     hl, hr = st.columns([1.12, 1], vertical_alignment="center")
 
     with hl:
@@ -64,36 +67,32 @@ with st.container(key="hero"):
         </svg>
         """)
 
-st.write("")
+    st.write("")
 
-# =========================================================
-# FEATURE CARDS
-# =========================================================
-features = [
-    ("🕒", "Real-time Monitoring", "Track rainfall and weather data in real time."),
-    ("🧬", "AI Prediction", "Accurate risk prediction using machine learning."),
-    ("⚠️", "Risk Alerts", "Get instant alerts for high-risk areas."),
-    ("🛡️", "Safer Communities", "Support early preparedness and response."),
-]
-for col, (icon, title, desc) in zip(st.columns(4), features):
-    with col:
-        html(f"""
-        <div class="feature-card">
-        <div class="feature-icon">{icon}</div>
-        <h3>{title}</h3>
-        <p>{desc}</p>
-        </div>
-        """)
+    # ---------------- FEATURE CARDS ----------------
+    features = [
+        ("🕒", "Real-time Monitoring", "Track rainfall and weather data in real time."),
+        ("🧬", "AI Prediction", "Accurate risk prediction using machine learning."),
+        ("⚠️", "Risk Alerts", "Get instant alerts for high-risk areas."),
+        ("🛡️", "Safer Communities", "Support early preparedness and response."),
+    ]
+    for col, (icon, title, desc) in zip(st.columns(4), features):
+        with col:
+            html(f"""
+            <div class="feature-card">
+            <div class="feature-icon">{icon}</div>
+            <h3>{title}</h3>
+            <p>{desc}</p>
+            </div>
+            """)
 
-st.write("")
+    st.write("")
 
-# =========================================================
-# STATS
-# =========================================================
-stats = [("6", "Districts Monitored"), ("75.14%", "Model Accuracy"),
-         ("24/7", "Live Telemetry"), ("RL", "Adaptive AI Engine")]
-for col, (v, l) in zip(st.columns(4), stats):
-    with col:
-        html(f"<div class='metric-card'><div class='lbl'>{l}</div><div class='val'>{v}</div></div>")
+    # ---------------- STATS ----------------
+    stats = [("6", "Districts Monitored"), ("75.14%", "Model Accuracy"),
+             ("24/7", "Live Telemetry"), ("RL", "Adaptive AI Engine")]
+    for col, (v, l) in zip(st.columns(4), stats):
+        with col:
+            html(f"<div class='metric-card'><div class='lbl'>{l}</div><div class='val'>{v}</div></div>")
 
-html("<div class='ftr'>© 2026 DisasterGuard · Department of Physical Sciences and Technology, Sabaragamuwa University</div>")
+    html("<div class='ftr'>© 2026 DisasterGuard · Department of Physical Sciences and Technology, Sabaragamuwa University</div>")
